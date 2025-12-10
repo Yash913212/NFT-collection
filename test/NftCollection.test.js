@@ -17,6 +17,9 @@ describe("NftCollection", function() {
         await nft.waitForDeployment();
     });
 
+    // ---------------------------
+    // Basic Configuration Tests
+    // ---------------------------
     it("should have correct initial config", async function() {
         expect(await nft.name()).to.equal("My NFT Collection");
         expect(await nft.symbol()).to.equal("MYNFT");
@@ -24,10 +27,12 @@ describe("NftCollection", function() {
         expect(await nft.totalSupply()).to.equal(0);
     });
 
+    // ---------------------------
+    // Transfers & Approvals Tests
+    // ---------------------------
     describe("Transfers & Approvals", function() {
         it("owner can transfer their token", async function() {
             await nft.safeMint(owner.address, 1);
-
             await nft.transferFrom(owner.address, addr1.address, 1);
 
             expect(await nft.ownerOf(1)).to.equal(addr1.address);
@@ -60,4 +65,53 @@ describe("NftCollection", function() {
             ).to.be.revertedWith("Not authorized");
         });
     });
+
+    // ---------------------------
+    // Metadata Tests
+    // ---------------------------
+    describe("Metadata", function() {
+        it("tokenURI returns correct metadata", async function() {
+            await nft.safeMint(owner.address, 1);
+            const uri = await nft.tokenURI(1);
+            expect(uri).to.equal("https://example.com/metadata/1");
+        });
+
+        it("tokenURI fails for unknown token", async function() {
+            await expect(nft.tokenURI(999)).to.be.revertedWith("Token does not exist");
+        });
+    });
+
+    // ---------------------------
+    // Safe Transfers Tests
+    // ---------------------------
+    describe("Safe Transfer", function() {
+        it("safeTransferFrom works for normal wallet", async function() {
+            await nft.safeMint(owner.address, 1);
+            await nft.safeTransferFrom(owner.address, addr1.address, 1);
+
+            expect(await nft.ownerOf(1)).to.equal(addr1.address);
+        });
+    });
+
+    // ---------------------------
+    // Burning Tests
+    // ---------------------------
+    describe("Burning", function() {
+        it("owner can burn their token", async function() {
+            await nft.safeMint(owner.address, 1);
+            await nft.burn(1);
+
+            expect(await nft.totalSupply()).to.equal(0);
+            await expect(nft.ownerOf(1)).to.be.revertedWith("Token does not exist");
+        });
+
+        it("unauthorized burn fails", async function() {
+            await nft.safeMint(owner.address, 1);
+
+            await expect(
+                nft.connect(addr1).burn(1)
+            ).to.be.revertedWith("Not authorized");
+        });
+    });
+
 });

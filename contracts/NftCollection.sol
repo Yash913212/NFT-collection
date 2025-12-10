@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 /// @title NftCollection - ERC-721 compatible NFT collection
-/// @notice Implements basic NFT minting, transfers, approvals, and metadata
+/// @notice Implements basic NFT minting, transfers, approvals, metadata, and burning
 contract NftCollection {
     // =========================
     // State variables
@@ -111,21 +111,15 @@ contract NftCollection {
         return owner;
     }
 
-    // =========================
-    // Internal helpers
-    // =========================
-
-    function _exists(uint256 tokenId) internal view returns (bool) {
-        return _owners[tokenId] != address(0);
+    function tokenURI(uint256 tokenId) public view returns (string memory) {
+        require(_exists(tokenId), "Token does not exist");
+        return string(abi.encodePacked(_baseTokenURI, _toString(tokenId)));
     }
 
-    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
-        address owner = ownerOf(tokenId);
-        return (
-            spender == owner ||
-            getApproved(tokenId) == spender ||
-            isApprovedForAll(owner, spender)
-        );
+    function supportsInterface(bytes4 interfaceId) public pure returns (bool) {
+        return
+            interfaceId == 0x80ac58cd || // ERC721
+            interfaceId == 0x5b5e139f;   // ERC721Metadata
     }
 
     // =========================
@@ -160,6 +154,64 @@ contract NftCollection {
     // Transfers
     // =========================
 
+    function transferFrom(address from, address to, uint256 tokenId) public {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+        _transfer(from, to, tokenId);
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId) public {
+        transferFrom(from, to, tokenId);
+        require(_checkOnERC721Received(from, to, tokenId, ""), "Receiver not implemented");
+    }
+
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public {
+        transferFrom(from, to, tokenId);
+        require(_checkOnERC721Received(from, to, tokenId, data), "Receiver not implemented");
+    }
+
+    function burn(uint256 tokenId) external {
+        address owner = ownerOf(tokenId);
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+
+        // Clear approvals
+        delete _tokenApprovals[tokenId];
+
+        // Update balances & supply
+        _balances[owner] -= 1;
+        _totalSupply -= 1;
+
+        // Remove ownership
+        delete _owners[tokenId];
+
+        emit Transfer(owner, address(0), tokenId);
+    }
+
+    // =========================
+    // Minting logic
+    // =========================
+
+    function safeMint(address to, uint256 tokenId) external onlyAdmin {
+        require(!_mintPaused, "Minting paused");
+        _mint(to, tokenId);
+    }
+
+    // =========================
+    // Internal helpers
+    // =========================
+
+    function _exists(uint256 tokenId) internal view returns (bool) {
+        return _owners[tokenId] != address(0);
+    }
+
+    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
+        address owner = ownerOf(tokenId);
+        return (
+            spender == owner ||
+            getApproved(tokenId) == spender ||
+            isApprovedForAll(owner, spender)
+        );
+    }
+
     function _transfer(address from, address to, uint256 tokenId) internal {
         require(ownerOf(tokenId) == from, "Not owner");
         require(to != address(0), "Transfer to zero address");
@@ -177,23 +229,6 @@ contract NftCollection {
         emit Transfer(from, to, tokenId);
     }
 
-    function transferFrom(address from, address to, uint256 tokenId) public {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
-        _transfer(from, to, tokenId);
-    }
-
-    function safeTransferFrom(address from, address to, uint256 tokenId) public {
-        transferFrom(from, to, tokenId);
-    }
-
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory /*data*/) public {
-        transferFrom(from, to, tokenId);
-    }
-
-    // =========================
-    // Minting logic
-    // =========================
-
     function _mint(address to, uint256 tokenId) internal {
         require(to != address(0), "Mint to zero address");
         require(!_exists(tokenId), "Token already minted");
@@ -206,8 +241,50 @@ contract NftCollection {
         emit Transfer(address(0), to, tokenId);
     }
 
-    function safeMint(address to, uint256 tokenId) external onlyAdmin {
-        require(!_mintPaused, "Minting paused");
-        _mint(to, tokenId);
+    function _checkOnERC721Received(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes memory data
+    ) private returns (bool) {
+        if (to.code.length == 0) {
+            return true; // EOA
+        }
+
+        (bool success, bytes memory returndata) = to.call(
+            abi.encodeWithSignature(
+                "onERC721Received(address,address,uint256,bytes)",
+                msg.sender,
+                from,
+                tokenId,
+                data
+            )
+        );
+
+        if (!success) {
+            return false;
+        }
+
+        bytes4 retval = abi.decode(returndata, (bytes4));
+        return retval == 0x150b7a02;
+    }
+
+    function _toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
     }
 }
