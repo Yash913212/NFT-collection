@@ -1,6 +1,12 @@
-node_modules
-cache
-artifacts
+.cache
+.artifacts
 .git
 .gitignore
 .env
+Dockerfile
+node_modules
+package-lock.json
+npm-debug.log
+.vscode
+dist
+build

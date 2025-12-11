@@ -1,19 +1,16 @@
-# Use official Node LTS image
-FROM node:18-alpine
+FROM node:18-bullseye-slim
 
-# Create working directory
 WORKDIR /app
 
-# Copy package files and install dependencies first (for build cache)
-COPY package*.json ./
+# Install core build dependencies for compiling Solidity
+RUN apt-get update && apt-get install -y python3 build-essential git curl ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN npm install
+# Copy package descriptors and install dependencies inside the container
+COPY package.json package-lock.json* ./
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 
-# Copy entire project
+# Copy the rest of the repo and compile contracts, then run tests
 COPY . .
-
-# Compile contracts
 RUN npx hardhat compile
 
-# Default command: run tests
 CMD ["npx", "hardhat", "test"]
